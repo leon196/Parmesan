@@ -18,12 +18,13 @@ uniform int	PASSINDEX;
 #endif
 
 const float PI = 3.14159;
-#define beat (time*70./60.)
+#define beat (time*140./60.)
 
 #define repeat(p,r) (mod(p,r)-r/2.)
 mat2 rot (float a) { float c=cos(a), s=sin(a); return mat2(c,s,-s,c); }
 float smoothmin (float a, float b, float r) { float h = clamp(.5+.5*(b-a)/r, 0., 1.); return mix(b, a, h)-r*h*(1.-h); }
 float sdCylinderBox (vec2 p, vec2 r) { vec2 b = abs(p)-r; return min(0.0, max(b.x, b.y)) + length(max(b,0.0)); }
+float sdTorus( vec3 p, vec2 t ) {  vec2 q = vec2(length(p.xz)-t.x,p.y); return length(q)-t.y; }
 float random (in vec2 st) { return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453123); }
 float hash(float n) { return fract(sin(n) * 1e4); }
 float noise(vec3 x) {
@@ -64,38 +65,70 @@ float map (vec3 pos) {
   // float salty = fbm(pos*20.);
   // float spicy = chilly*.1 + salty*.01;
   float scene = 1.0;
-  //
-  float s0 = floor(beat);
-  float b0 = mod(beat, 3.0)/3.;
-  //
-  // vec3 cell = vec3(.4,.5,.3);
-  // // pos.z += time * .5;
-  // vec3 id = floor(pos/cell);
-  // pos.xy *= rot(id.z);
-  // pos.x = repeat(pos.x, cell.x);
-  // pos.y = repeat(pos.y, cell.y);
-  // pos.z = repeat(pos.z, cell.z);
-  // scene = min(
-  //   sdCylinderBox(pos.xz, vec2(.05,.005)),
-  //   sdCylinderBox(pos.yz, vec2(.01,.005)));
+  float s0 = floor(beat/2.);
+  float b0 = mod(beat/2., 3.0)/3.;
+  int stage = 1;
+  int fly = 0;
 
-  pos.xz *= rot(b0+s0);
-  pos.yz *= rot(b0+s0);
-  pos.yx *= rot(b0+s0);
-  float amplitude = 1.0;
-  float range = .1+.4*b0;
-  float ay = .4+.1*b0+s0*.2;
-  float ax = -.2-.4*b0+s0*4.;
-  float az = -.5-.2*b0+s0;
-  for (int index = 0; index < 4; ++index) {
-    pos = abs(pos)-range*amplitude;
-    pos.xz *= rot(ay*amplitude);
-    pos.yz *= rot(ax*amplitude);
-    pos.yx *= rot(az*amplitude);
-    pos = abs(pos)-range*amplitude*.1;
-    scene = min(scene, sdCylinderBox(pos.xz, vec2(.001)));
+  if (fly == 1) {
+      pos.xz *= rot(b0+s0);
+      pos.yz *= rot(b0+s0);
+      pos.yx *= rot(b0+s0);
   }
-  // float scene = length(pos)-1.0;
+
+  if (stage == 0) {
+
+    scene = length(pos)-1.0;
+
+  } else if (stage == 1) {
+
+    vec3 cell = vec3(.4,.5,.3);
+    pos.z += time * .5;
+    vec3 id = floor(pos/cell);
+    pos.xy *= rot(id.z - time * .1);
+    pos.x = repeat(pos.x, cell.x);
+    pos.y = repeat(pos.y, cell.y);
+    pos.z = repeat(pos.z, cell.z);
+    scene = min(
+      sdCylinderBox(pos.xz, vec2(.05,.005)),
+      sdCylinderBox(pos.yz, vec2(.01,.005)));
+
+  } else if (stage == 2) {
+
+      float amplitude = 1.0;
+      float range = .1+.8*b0;
+      float ay = .4+.1*b0+s0*.2;
+      float ax = -.2-.4*b0+s0*4.;
+      float az = -.5-.2*b0+s0;
+      float blend = 2.;
+      float radius = .1;
+      float thin = .001;
+      for (int index = 0; index < 6; ++index) {
+        pos = abs(pos)-range*amplitude;
+        pos.xz *= rot(ay/amplitude);
+        pos.yz *= rot(ax/amplitude);
+        pos.yx *= rot(az/amplitude);
+        // scene = min(scene, sdTorus(pos, vec2(radius, thin)*amplitude));
+        scene = smoothmin(scene, sdTorus(pos, vec2(radius, thin)), blend*amplitude);
+        amplitude /= 2.;
+      }
+
+  } else if (stage == 3) {
+
+    float amplitude = 1.0;
+    float range = .1+.4*b0;
+    float ay = .4+.1*b0+s0*.2;
+    float ax = -.2-.4*b0+s0*4.;
+    float az = -.5-.2*b0+s0;
+    for (int index = 0; index < 6; ++index) {
+      pos = abs(pos)-range*amplitude;
+      pos.xz *= rot(ay*amplitude);
+      pos.yz *= rot(ax*amplitude);
+      pos.yx *= rot(az*amplitude);
+      pos = abs(pos)-range*amplitude*.1;
+      scene = min(scene, sdCylinderBox(pos.xz, vec2(.001*amplitude)));
+    }
+  }
 
   return scene;
 }
@@ -124,22 +157,6 @@ vec3 background (vec2 uv) {
   return c;
 }
 
-vec3 sketch (vec2 uv) {
-  vec3 b = background(uv);
-  float t0 = smoothstep(.0, 1.,time);
-  float t1 = time*PI*8.;
-  float t2 = time*PI*2.;
-  float b1 = (sin(time*PI*4.));
-  // uv.y *= 1.+t0*.02*cos(t1);
-  // uv.x *= 1.+t0*.1*sin(t1)*sin(t2);
-  float r = .2;
-  vec2 offset = vec2(.01,0);
-  vec3 c = vec3(0);
-  c.r += smoothstep(r+.001,r,length(uv+offset));
-  c.gb += smoothstep(r+.001,r,length(uv-offset));
-  return c;
-}
-
 vec4 raymarch (vec3 eye, vec3 ray, float dither) {
   vec4 result = vec4(eye, 0);
   float total = dither * .2;
@@ -163,6 +180,7 @@ void main() {
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
     float dither = random(uv);
     vec3 offset = vec3(.02,0,0);
+
     vec3 eyeLeft = vec3(.01,.01,-4.)-offset;
     vec3 eyeRight = vec3(.01,.01,-4.)+offset;
     vec3 at = vec3(0);
@@ -170,6 +188,7 @@ void main() {
     vec4 resultRight = raymarch(eyeRight, look(eyeRight, at-offset, uv), dither);
     // vec3 normal = getNormal(result.xyz);
     vec3 color = vec3(resultLeft.a, vec2(resultRight.a));
+    // color = smoothstep(.0, .2, color);
     // vec3 color = sketch(uv);
     // gl_FragColor = texture2D(b0, gl_FragCoord.xy / synth_Resolution) * .9 + .2 * vec4(color, 1);
     gl_FragColor = vec4(color, 1);
