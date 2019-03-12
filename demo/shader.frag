@@ -20,3 +20,5 @@ void main() {
   }
 }
 
+
+//! <preset file="shader.preset" />

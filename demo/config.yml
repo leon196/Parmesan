@@ -1,6 +1,6 @@
 
 demo:
-  audioTool: none
+  audioTool: oidos
   name: parmesan
   glslversion: 330
   bufferCount: 2
