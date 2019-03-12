@@ -17,9 +17,10 @@ uniform int	PASSINDEX;
 #define b0 backbuffer
 #endif
 
+const float PI = 3.14159;
+#define beat (time*70./60.)
 
 #define repeat(p,r) (mod(p,r)-r/2.)
-const float PI = 3.14159;
 mat2 rot (float a) { float c=cos(a), s=sin(a); return mat2(c,s,-s,c); }
 float smoothmin (float a, float b, float r) { float h = clamp(.5+.5*(b-a)/r, 0., 1.); return mix(b, a, h)-r*h*(1.-h); }
 float sdCylinderBox (vec2 p, vec2 r) { vec2 b = abs(p)-r; return min(0.0, max(b.x, b.y)) + length(max(b,0.0)); }
@@ -59,21 +60,42 @@ void moda(inout vec2 p, float repetitions) {
 }
 
 float map (vec3 pos) {
-  float chilly = noise(pos * 2.);
-  float salty = fbm(pos*20.);
-  float spicy = chilly*.1 + salty*.01;
+  // float chilly = noise(pos * 2.);
+  // float salty = fbm(pos*20.);
+  // float spicy = chilly*.1 + salty*.01;
+  float scene = 1.0;
+  //
+  float s0 = floor(beat);
+  float b0 = mod(beat, 3.0)/3.;
+  //
+  // vec3 cell = vec3(.4,.5,.3);
+  // // pos.z += time * .5;
+  // vec3 id = floor(pos/cell);
+  // pos.xy *= rot(id.z);
+  // pos.x = repeat(pos.x, cell.x);
+  // pos.y = repeat(pos.y, cell.y);
+  // pos.z = repeat(pos.z, cell.z);
+  // scene = min(
+  //   sdCylinderBox(pos.xz, vec2(.05,.005)),
+  //   sdCylinderBox(pos.yz, vec2(.01,.005)));
 
-  float cell = .5;
-  pos.z += time * .1;
-  pos = repeat(pos, cell);
-  float scene = min(
-    sdCylinderBox(pos.xz, vec2(.05,.005)),
-    sdCylinderBox(pos.yz, vec2(.02,.005)));
-  cell = .01;
-  scene = min(
-    max(scene, (length(repeat(pos+cell/2., cell/2.))-cell/8.)),
-    max(scene, (length(repeat(pos+cell/2., cell))-cell/4.))
-  );
+  pos.xz *= rot(b0+s0);
+  pos.yz *= rot(b0+s0);
+  pos.yx *= rot(b0+s0);
+  float amplitude = 1.0;
+  float range = .1+.4*b0;
+  float ay = .4+.1*b0+s0*.2;
+  float ax = -.2-.4*b0+s0*4.;
+  float az = -.5-.2*b0+s0;
+  for (int index = 0; index < 4; ++index) {
+    pos = abs(pos)-range*amplitude;
+    pos.xz *= rot(ay*amplitude);
+    pos.yz *= rot(ax*amplitude);
+    pos.yx *= rot(az*amplitude);
+    pos = abs(pos)-range*amplitude*.1;
+    scene = min(scene, sdCylinderBox(pos.xz, vec2(.001)));
+  }
+  // float scene = length(pos)-1.0;
 
   return scene;
 }
@@ -125,7 +147,7 @@ vec4 raymarch (vec3 eye, vec3 ray, float dither) {
     result.xyz = eye + ray * total;
     float dist = map(result.xyz);
     if (dist < 0.001 + total * 1.0/synth_Resolution.y) {
-      result.a = pow(index / 30.0, 1./2.);
+      result.a = index/30.;
       break;
     }
     dist *= 0.9 + 0.1 * dither;
@@ -148,7 +170,8 @@ void main() {
     vec4 resultRight = raymarch(eyeRight, look(eyeRight, at-offset, uv), dither);
     // vec3 normal = getNormal(result.xyz);
     vec3 color = vec3(resultLeft.a, vec2(resultRight.a));
-    // gl_FragColor = texture2D(b0, gl_FragCoord.xy / synth_Resolution) * .9 + .1 * vec4(color, 1);
+    // vec3 color = sketch(uv);
+    // gl_FragColor = texture2D(b0, gl_FragCoord.xy / synth_Resolution) * .9 + .2 * vec4(color, 1);
     gl_FragColor = vec4(color, 1);
   }
 }
