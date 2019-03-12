@@ -1,0 +1,10 @@
+
+demo:
+  audioTool: none
+  name: parmesan
+  glslversion: 330
+  bufferCount: 2
+shader:
+  filename: shader.frag
+  globals:
+    float:
