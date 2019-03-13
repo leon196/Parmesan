@@ -18,9 +18,22 @@ uniform int	PASSINDEX;
 #endif
 
 const float PI = 3.14159;
-#define beat (time*140./60.)
-
+const int STAGE_INTRO = 0;
+const int STAGE_TUNNEL = 1;
+const int STAGE_CITY = 2;
+const int STAGE_RING = 3;
+const int STAGE_KIF = 4;
+#define beat (time*140./60./2.)
 #define repeat(p,r) (mod(p,r)-r/2.)
+int getStage () {
+  #ifdef veda
+  float t = mod(time, 100.);
+  #else
+  float t = time;
+  #endif
+  return int(step(34., t)) + int(step(48., t)) + int(step(75., t)) + int(step(102., t));
+}
+
 mat2 rot (float a) { float c=cos(a), s=sin(a); return mat2(c,s,-s,c); }
 float smoothmin (float a, float b, float r) { float h = clamp(.5+.5*(b-a)/r, 0., 1.); return mix(b, a, h)-r*h*(1.-h); }
 float sdCylinderBox (vec2 p, vec2 r) { vec2 b = abs(p)-r; return min(0.0, max(b.x, b.y)) + length(max(b,0.0)); }
@@ -59,34 +72,47 @@ void moda(inout vec2 p, float repetitions) {
 	a = mod(a,angle) - angle/2.;
 	p = vec2(cos(a), sin(a))*length(p);
 }
+float sinc( float x, float k ) {
+    float a = PI * (k*x-1.0);
+    return sin(a)/a;
+}
+float sequence (float a, float b) {
+  #ifdef veda
+  float t = mod(time, 20.);
+  #else
+  float t = time;
+  #endif
+  return smoothstep(b+.1,b,t) * smoothstep(a,a+.1,t);
+}
 
 float map (vec3 pos) {
   // float chilly = noise(pos * 2.);
   // float salty = fbm(pos*20.);
   // float spicy = chilly*.1 + salty*.01;
   float scene = 1.0;
-  float s0 = floor(beat/2.);
-  float b0 = mod(beat/2., 3.0)/3.;
-  int stage = 2;
-  int fly = 0;
+  float s0 = floor(beat);
+  float b0 = mod(beat, 3.0)/3.;
 
-  s0 = floor(time/10.);
-  b0 = 0.;
+  // s0 = floor(time/10.);
+  // b0 = 0.;
 
   // stage = int(step(34., time)) + int(step(48., time)) + int(step(75., time)) + int(step(102., time));
   // fly = int(step(102., time));
 
-  if (fly == 1) {
-      pos.xz *= rot(b0+s0);
-      pos.yz *= rot(b0+s0);
-      pos.yx *= rot(b0+s0);
-  }
+  int stage = getStage();
 
-  if (stage == 0) {
+  if (stage == STAGE_INTRO) {
 
+    float bounce = sinc(mod(beat * 2., 1.), 5.);
+    pos.y += bounce * .25 * sequence(0., 7.0);
+    pos.z += sinc(mod(beat, 1.), 10.) * sequence(7., 35.);
+    pos.xy += vec2(
+      clamp(mod(mix(time, -time, step(1., mod(time, 2.))), 1.), 0., 1.) * 2. - 1.,
+      -abs(sin(time*5.0))+.5) * sequence(17., 35.);
+    // pos.y += mod(mix(time, -time, step(1., mod(time, 2.))), 1.);
     scene = length(pos)-1.0;
 
-  } else if (stage == 1) {
+  } else if (stage == STAGE_TUNNEL) {
 
     vec3 cell = vec3(.4,.5,.9);
     // pos.z += time * .5;
@@ -99,11 +125,11 @@ float map (vec3 pos) {
       sdCylinderBox(pos.xz, vec2(.05,.005)),
       sdCylinderBox(pos.yz, vec2(.01,.005)));
 
-  } else if (stage == 2) {
+  } else if (stage == STAGE_CITY) {
 
     float cell = 4.;
     vec3 p = pos;
-    pos.z += time * .1;
+    pos.z += time;
     float id = floor(pos.z/cell);
     float tunnel = length(pos.xy)-.5;//+.2*sin(id);
     // tunnel = min(tunnel, (length(pos.xy)-.4+.1*sin(id)));
@@ -111,36 +137,39 @@ float map (vec3 pos) {
     float amplitude = 1.0;
     for (int index = 0; index < 7; ++index) {
       pos = abs(pos)-.8*amplitude;
-      pos.zx *= rot(-.5*amplitude+id*2.5468/amplitude);
-      scene = min(scene, abs(abs(max(pos.x, pos.y))-.4*amplitude)-.2*amplitude);
+      pos.zx *= rot(-.5*amplitude+id*2.5468/amplitude+s0);
+      scene = min(scene, abs(abs(max(pos.x, max(pos.y, pos.z)))-.4*amplitude)-.2*amplitude);
       amplitude /= 2.0;
     }
     scene = max(0.0, -scene);
     scene = max(scene, -tunnel);
 
-  } else if (stage == 3) {
+  } else if (stage == STAGE_RING) {
 
-      float amplitude = 1.0;
-      float range = .7;
-      float ay = .4;
-      float ax = -.4;
-      float az = -.8;
-      float blend = .1;
-      float radius = .05;
-      float thin = .002;
-      float wave = 0.75+0.25*sin(length(pos)*2.-beat*PI);
-      for (int index = 0; index < 4; ++index) {
-        float w = 4.*time*smoothstep(.2, 1., float(index)/6.);
-        pos = abs(pos)-(range*wave)*amplitude;
-        pos.xz *= rot(ay/amplitude+w);
-        pos.yz *= rot(ax/amplitude+w);
-        pos.yx *= rot(az/amplitude+w);
-        scene = smoothmin(scene, sdTorus(pos, vec2(radius, thin)), blend);
-        amplitude /= 2.;
-      }
+    float amplitude = 1.0;
+    float range = .7;
+    float ay = .4;
+    float ax = -.4;
+    float az = -.8;
+    float wave = 0.75+0.25*sin(length(pos)*2.-2.7);//-beat*PI*2.);
+    float blend = .1;
+    float radius = .2;
+    float thin = .05;
+    for (int index = 0; index < 3; ++index) {
+      float w = 4.*time*smoothstep(.2, 1., float(index)/6.);
+      pos = abs(pos)-(range*wave)*amplitude;
+      pos.xz *= rot(ay/amplitude+w);
+      pos.yz *= rot(ax/amplitude+w);
+      pos.yx *= rot(az/amplitude+w);
+      scene = smoothmin(scene, sdTorus(pos, vec2(radius, thin)*amplitude), blend);
+      amplitude /= 2.;
+    }
 
-  } else if (stage == 4) {
+  } else if (stage == STAGE_KIF) {
 
+    pos.xz *= rot(b0+s0);
+    pos.yz *= rot(b0+s0);
+    pos.yx *= rot(b0+s0);
     float amplitude = 1.0;
     float range = .1+.4*b0;
     float ay = .4+.1*b0+s0*.2;
@@ -206,11 +235,23 @@ vec3 dots (float levelOfDetails) {
 
 vec3 shade (vec3 view, vec4 pos) {
   float ao = pos.a;
-  vec3 color = vec3(.1);
+  vec3 color = vec3(0);
   vec3 normal = getNormal(pos.xyz);
-  color += vec3(0.760, 0.925, 1) * clamp(dot(normal, normalize(vec3(1,2,-1))), 0., 1.);
-  color += vec3(1, 0.917, 0.760) * pow(clamp(dot(normal, normalize(vec3(-2,-4,-1))), 0., 1.), 2.);
-  color += vec3(0.925, 1, 0.760) * pow(clamp(dot(normal, normalize(vec3(-4,0,0))), 0., 1.), 4.);
+  int stage = getStage();
+  if (stage == STAGE_RING) {
+
+    color = vec3(0.980, 0.729, 0.478);
+    color += vec3(0.980, 0.533, 0.478) * clamp(dot(normal, normalize(vec3(1,1,-1)))*.5+.5, 0., 1.);
+    color += vec3(0.980, 0.078, 0.149) * pow(clamp(dot(normal, normalize(vec3(-2,-2,-4))), 0., 1.), 4.);
+
+  } else {
+
+    color = vec3(.1);
+    color += vec3(0.760, 0.925, 1) * clamp(dot(normal, normalize(vec3(1,2,-1))), 0., 1.);
+    color += vec3(1, 0.917, 0.760) * pow(clamp(dot(normal, normalize(vec3(-2,-4,-1))), 0., 1.), 2.);
+    color += vec3(0.925, 1, 0.760) * pow(clamp(dot(normal, normalize(vec3(-4,0,0))), 0., 1.), 4.);
+
+  }
   color *= ao;
   return color;
 }
@@ -220,16 +261,21 @@ void main() {
   if (PASSINDEX == 0) {
 
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
-    vec3 eye = vec3(-.1,.1,-4.);
+    vec3 eye = vec3(-.01,-.01,-4.);
+    // float angle = floor(beat) * 2.5465 * PI;
+    // eye.xy += vec2(cos(angle), sin(angle)) * .2;
     vec3 at = vec3(0);
+    // at.xy -= vec2(cos(angle), sin(angle)) * .1;
     vec3 view = look(eye, at, uv);
     vec4 result = raymarch(eye, view);
     vec3 color = shade(view, result);
     // vec3 color = anaglyph(eye, at, uv);
 
-    gl_FragColor = vec4(color, 1.);
+    // gl_FragColor = vec4(color, 1.);
     // vec4 frame = texture2D(b0, gl_FragCoord.xy/synth_Resolution);
-    // gl_FragColor = frame*.9 + .1*vec4(color, 1);
+    // float blend = .7 * (1.-mod(beat, 1.));
+    // gl_FragColor = frame*blend + (1.-blend)*vec4(color, 1);
+    gl_FragColor = vec4(color, 1);
 
   } else if (PASSINDEX == 1) {
 
