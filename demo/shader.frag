@@ -162,8 +162,9 @@ vec3 getNormal (vec3 pos) {
   return normalize( e.xyy*map( pos + e.xyy ) + e.yyx*map( pos + e.yyx ) + e.yxy*map( pos + e.yxy ) + e.xxx*map( pos + e.xxx ) );
 }
 
-vec4 raymarch (vec3 eye, vec3 ray, float dither) {
+vec4 raymarch (vec3 eye, vec3 ray) {
   vec4 result = vec4(eye, 0);
+  float dither = random(ray.xy);
   float total = dither * .2;
   for (float index = 50.0; index > 0.0; --index) {
     result.xyz = eye + ray * total;
@@ -178,34 +179,37 @@ vec4 raymarch (vec3 eye, vec3 ray, float dither) {
   return result;
 }
 
+vec3 anaglyph (vec3 eye, vec3 at, vec2 uv) {
+  vec3 offset = vec3(.02,0,0);
+  vec3 eyeLeft = eye-offset;
+  vec3 eyeRight = eye+offset;
+  vec4 resultLeft = raymarch(eyeLeft, look(eyeLeft, at+offset, uv));
+  vec4 resultRight = raymarch(eyeRight, look(eyeRight, at-offset, uv));
+  return vec3(resultLeft.a, vec2(resultRight.a));
+}
+
+vec3 dots (vec3 eye, vec3 at, vec2 uv) {
+  float lod = synth_Resolution.y/8.;
+  vec2 uvpixel = floor(uv * lod + .5) / lod;
+  vec4 result = raymarch(eye, look(eye, at, uvpixel));
+  vec3 color = vec3(result.w);
+  float depth = smoothstep(10.0, 0., length(eye-result.xyz));
+  float cell = 1./lod;
+  uv = repeat(uv+cell/2., cell);
+  float shape = smoothstep(cell/3.+cell/10., cell/3.,length(uv));
+  return color * shape;
+}
+
 void main() {
 
   if (PASSINDEX == 0) {
 
-
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
-    vec3 offset = vec3(.02,0,0);
     vec3 eye = vec3(.01,.01,-4.);
-    vec3 eyeLeft = eye-offset;
-    vec3 eyeRight = eye+offset;
     vec3 at = vec3(0);
-    // vec4 resultLeft = raymarch(eyeLeft, look(eyeLeft, at+offset, uv), dither);
-    // vec4 resultRight = raymarch(eyeRight, look(eyeRight, at-offset, uv), dither);
-    // vec3 color = vec3(resultLeft.a, vec2(resultRight.a));
-    float lod = synth_Resolution.y/8.;
-    // vec2 uvpixel = floor(gl_FragCoord.xy / synth_Resolution * lod + 0.5) / lod;
-    vec2 uvpixel = floor(uv * lod + .5) / lod;
-    float dither = random(uvpixel);
-    vec4 result = raymarch(eye, look(eye, at, uvpixel), dither);
-    vec3 color = vec3(result.w);
-    float depth = smoothstep(10.0, 0., length(eye-result.xyz));
-    float cell = 1./lod;
-    uv = repeat(uv+cell/2., cell);
-    float shape = smoothstep(cell/3.+cell/10., cell/3.,length(uv));
-
+    vec3 color = dots(eye, at, uv);
     vec4 frame = texture2D(b0, gl_FragCoord.xy / synth_Resolution);
-    gl_FragColor = frame*.9 + .1*vec4(color, 1) * shape;
-    // gl_FragColor = vec4(color, 1)*shape;
+    gl_FragColor = frame*.9 + .1*vec4(color, 1);
 
   } else if (PASSINDEX == 1) {
 
