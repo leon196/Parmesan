@@ -13,7 +13,7 @@ uniform sampler2D b1;
 uniform int	PASSINDEX;
 
 #ifdef veda
-#define PASSINDEX 1
+#define PASSINDEX 0
 #define b0 backbuffer
 #endif
 
@@ -67,8 +67,11 @@ float map (vec3 pos) {
   float scene = 1.0;
   float s0 = floor(beat/2.);
   float b0 = mod(beat/2., 3.0)/3.;
-  int stage = 1;
+  int stage = 0;
   int fly = 0;
+
+  stage = int(step(34., time)) + int(step(48., time)) + int(step(75., time)) + int(step(102., time));
+  fly = int(step(102., time));
 
   if (fly == 1) {
       pos.xz *= rot(b0+s0);
@@ -95,25 +98,43 @@ float map (vec3 pos) {
 
   } else if (stage == 2) {
 
+    float tunnel = length(pos.xy)-1.;
+    float cell = 4.;
+    pos.z += time;
+    float id = floor(pos.z/cell);
+    pos.z = repeat(pos.z, cell);
+    float amplitude = 1.0;
+    for (int index = 0; index < 6; ++index) {
+      pos = abs(pos)-.7*amplitude;
+      pos.zx *= rot(-.5*amplitude+id*2.);
+      scene = min(scene, max(pos.x, pos.y));//max(pos.y, pos.z)));
+      amplitude /= 2.0;
+    }
+    scene = max(0.0, -scene);
+    scene = max(scene, -tunnel);
+
+  } else if (stage == 3) {
+
       float amplitude = 1.0;
-      float range = .1+.8*b0;
-      float ay = .4+.1*b0+s0*.2;
-      float ax = -.2-.4*b0+s0*4.;
-      float az = -.5-.2*b0+s0;
-      float blend = 2.;
-      float radius = .1;
-      float thin = .001;
-      for (int index = 0; index < 6; ++index) {
-        pos = abs(pos)-range*amplitude;
-        pos.xz *= rot(ay/amplitude);
-        pos.yz *= rot(ax/amplitude);
-        pos.yx *= rot(az/amplitude);
-        // scene = min(scene, sdTorus(pos, vec2(radius, thin)*amplitude));
-        scene = smoothmin(scene, sdTorus(pos, vec2(radius, thin)), blend*amplitude);
+      float range = .7;
+      float ay = .4;
+      float ax = -.4;
+      float az = -.8;
+      float blend = .1;
+      float radius = .05;
+      float thin = .002;
+      float wave = 0.75+0.25*sin(length(pos)*2.-beat*PI);
+      for (int index = 0; index < 4; ++index) {
+        float w = 4.*time*smoothstep(.2, 1., float(index)/6.);
+        pos = abs(pos)-(range*wave)*amplitude;
+        pos.xz *= rot(ay/amplitude+w);
+        pos.yz *= rot(ax/amplitude+w);
+        pos.yx *= rot(az/amplitude+w);
+        scene = smoothmin(scene, sdTorus(pos, vec2(radius, thin)), blend);
         amplitude /= 2.;
       }
 
-  } else if (stage == 3) {
+  } else if (stage == 4) {
 
     float amplitude = 1.0;
     float range = .1+.4*b0;
@@ -138,33 +159,14 @@ vec3 getNormal (vec3 pos) {
   return normalize( e.xyy*map( pos + e.xyy ) + e.yyx*map( pos + e.yyx ) + e.yxy*map( pos + e.yxy ) + e.xxx*map( pos + e.xxx ) );
 }
 
-vec3 background (vec2 uv) {
-  vec3 c = mix(vec3(1), vec3(1, 0.439, 0.545), uv.y+.85);
-  // vec3 c = mix(vec3(1), vec3(0), uv.y+.85);
-  float cell = .05;
-  vec2 id = floor(uv/cell);
-  float t = length(id)*.1;
-  float r = .02-.0025*abs(sin(t*2.));
-  uv = repeat(uv,cell);
-  uv *= rot(t);
-  c = mix(c, vec3(1, 0.949, 0.439), clamp(
-  // c = mix(c, vec3(1), clamp(
-    .0005/
-    abs(
-      max(abs(uv.x),abs(uv.y))
-    -r),
-  0., 1.));
-  return c;
-}
-
 vec4 raymarch (vec3 eye, vec3 ray, float dither) {
   vec4 result = vec4(eye, 0);
   float total = dither * .2;
-  for (float index = 30.0; index > 0.0; --index) {
+  for (float index = 50.0; index > 0.0; --index) {
     result.xyz = eye + ray * total;
     float dist = map(result.xyz);
     if (dist < 0.001 + total * 1.0/synth_Resolution.y) {
-      result.a = index/30.;
+      result.a = index/50.;
       break;
     }
     dist *= 0.9 + 0.1 * dither;
@@ -174,25 +176,26 @@ vec4 raymarch (vec3 eye, vec3 ray, float dither) {
 }
 
 void main() {
+
   if (PASSINDEX == 0) {
-    gl_FragColor = texture2D(b1, gl_FragCoord.xy / synth_Resolution);
-  } else if (PASSINDEX == 1) {
+
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
     float dither = random(uv);
     vec3 offset = vec3(.02,0,0);
-
     vec3 eyeLeft = vec3(.01,.01,-4.)-offset;
     vec3 eyeRight = vec3(.01,.01,-4.)+offset;
     vec3 at = vec3(0);
     vec4 resultLeft = raymarch(eyeLeft, look(eyeLeft, at+offset, uv), dither);
     vec4 resultRight = raymarch(eyeRight, look(eyeRight, at-offset, uv), dither);
-    // vec3 normal = getNormal(result.xyz);
     vec3 color = vec3(resultLeft.a, vec2(resultRight.a));
-    // color = smoothstep(.0, .2, color);
-    // vec3 color = sketch(uv);
-    // gl_FragColor = texture2D(b0, gl_FragCoord.xy / synth_Resolution) * .9 + .2 * vec4(color, 1);
     gl_FragColor = vec4(color, 1);
+
+  } else if (PASSINDEX == 1) {
+
+    gl_FragColor = texture2D(b0, gl_FragCoord.xy / synth_Resolution);
+
   }
+
 }
 
 
