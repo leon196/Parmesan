@@ -67,11 +67,11 @@ float map (vec3 pos) {
   float scene = 1.0;
   float s0 = floor(beat/2.);
   float b0 = mod(beat/2., 3.0)/3.;
-  int stage = 0;
+  int stage = 2;
   int fly = 0;
 
-  stage = int(step(34., time)) + int(step(48., time)) + int(step(75., time)) + int(step(102., time));
-  fly = int(step(102., time));
+  // stage = int(step(34., time)) + int(step(48., time)) + int(step(75., time)) + int(step(102., time));
+  // fly = int(step(102., time));
 
   if (fly == 1) {
       pos.xz *= rot(b0+s0);
@@ -98,16 +98,16 @@ float map (vec3 pos) {
 
   } else if (stage == 2) {
 
-    float tunnel = length(pos.xy)-1.;
     float cell = 4.;
     pos.z += time;
     float id = floor(pos.z/cell);
+    float tunnel = length(pos.xy)-1.+.2*sin(id);
     pos.z = repeat(pos.z, cell);
     float amplitude = 1.0;
-    for (int index = 0; index < 6; ++index) {
-      pos = abs(pos)-.7*amplitude;
-      pos.zx *= rot(-.5*amplitude+id*2.);
-      scene = min(scene, max(pos.x, pos.y));//max(pos.y, pos.z)));
+    for (int index = 0; index < 5; ++index) {
+      pos = abs(pos)-.8*amplitude;
+      pos.zx *= rot(-.5*amplitude+id*3.);
+      scene = min(scene, abs(max(pos.x, max(pos.y, pos.z)))-.15*amplitude);
       amplitude /= 2.0;
     }
     scene = max(0.0, -scene);
