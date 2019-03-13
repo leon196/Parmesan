@@ -67,7 +67,7 @@ float map (vec3 pos) {
   float scene = 1.0;
   float s0 = floor(beat/2.);
   float b0 = mod(beat/2., 3.0)/3.;
-  int stage = 4;
+  int stage = 2;
   int fly = 0;
 
   s0 = floor(time/10.);
@@ -88,7 +88,7 @@ float map (vec3 pos) {
 
   } else if (stage == 1) {
 
-    vec3 cell = vec3(.4,.5,.3);
+    vec3 cell = vec3(.4,.5,.9);
     // pos.z += time * .5;
     vec3 id = floor(pos/cell);
     pos.xy *= rot(id.z);
@@ -102,15 +102,17 @@ float map (vec3 pos) {
   } else if (stage == 2) {
 
     float cell = 4.;
-    pos.z += time;
+    vec3 p = pos;
+    pos.z += time * .1;
     float id = floor(pos.z/cell);
-    float tunnel = length(pos.xy)-1.+.2*sin(id);
+    float tunnel = length(pos.xy)-.5;//+.2*sin(id);
+    // tunnel = min(tunnel, (length(pos.xy)-.4+.1*sin(id)));
     pos.z = repeat(pos.z, cell);
     float amplitude = 1.0;
-    for (int index = 0; index < 5; ++index) {
+    for (int index = 0; index < 7; ++index) {
       pos = abs(pos)-.8*amplitude;
-      pos.zx *= rot(-.5*amplitude+id*3.);
-      scene = min(scene, abs(max(pos.x, max(pos.y, pos.z)))-.15*amplitude);
+      pos.zx *= rot(-.5*amplitude+id*2.5468/amplitude);
+      scene = min(scene, abs(abs(max(pos.x, pos.y))-.4*amplitude)-.2*amplitude);
       amplitude /= 2.0;
     }
     scene = max(0.0, -scene);
@@ -169,7 +171,7 @@ vec4 raymarch (vec3 eye, vec3 ray) {
   for (float index = 50.0; index > 0.0; --index) {
     result.xyz = eye + ray * total;
     float dist = map(result.xyz);
-    if (dist < 0.001 + total * 1.0/synth_Resolution.y) {
+    if (dist < 0.001 + total * 1./synth_Resolution.y) {
       result.a = index/50.;
       break;
     }
@@ -188,16 +190,29 @@ vec3 anaglyph (vec3 eye, vec3 at, vec2 uv) {
   return vec3(resultLeft.a, vec2(resultRight.a));
 }
 
-vec3 dots (vec3 eye, vec3 at, vec2 uv) {
-  float lod = synth_Resolution.y/8.;
+vec3 dots (float levelOfDetails) {
+  vec2 uv = gl_FragCoord.xy/synth_Resolution;
+  vec2 lod = synth_Resolution.xy/levelOfDetails;
   vec2 uvpixel = floor(uv * lod + .5) / lod;
-  vec4 result = raymarch(eye, look(eye, at, uvpixel));
-  vec3 color = vec3(result.w);
-  float depth = smoothstep(10.0, 0., length(eye-result.xyz));
-  float cell = 1./lod;
+  vec4 frame = texture2D(b0, uvpixel);
+  vec2 cell = 1./lod;
   uv = repeat(uv+cell/2., cell);
-  float shape = smoothstep(cell/3.+cell/10., cell/3.,length(uv));
-  return color * shape;
+  float angle = random(uvpixel) * PI * 2.;
+  uv += vec2(cos(angle),sin(angle)) * cell.y/6.;
+  uv.x *= synth_Resolution.x/synth_Resolution.y;
+  float shape = smoothstep(cell.y/200., 0., length(uv)-cell.y/3.);
+  return clamp(frame.rgb * shape, 0., 1.);
+}
+
+vec3 shade (vec3 view, vec4 pos) {
+  float ao = pos.a;
+  vec3 color = vec3(.1);
+  vec3 normal = getNormal(pos.xyz);
+  color += vec3(0.760, 0.925, 1) * clamp(dot(normal, normalize(vec3(1,2,-1))), 0., 1.);
+  color += vec3(1, 0.917, 0.760) * pow(clamp(dot(normal, normalize(vec3(-2,-4,-1))), 0., 1.), 2.);
+  color += vec3(0.925, 1, 0.760) * pow(clamp(dot(normal, normalize(vec3(-4,0,0))), 0., 1.), 4.);
+  color *= ao;
+  return color;
 }
 
 void main() {
@@ -205,11 +220,16 @@ void main() {
   if (PASSINDEX == 0) {
 
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
-    vec3 eye = vec3(.01,.01,-4.);
+    vec3 eye = vec3(-.1,.1,-4.);
     vec3 at = vec3(0);
-    vec3 color = dots(eye, at, uv);
-    vec4 frame = texture2D(b0, gl_FragCoord.xy / synth_Resolution);
-    gl_FragColor = frame*.9 + .1*vec4(color, 1);
+    vec3 view = look(eye, at, uv);
+    vec4 result = raymarch(eye, view);
+    vec3 color = shade(view, result);
+    // vec3 color = anaglyph(eye, at, uv);
+
+    gl_FragColor = vec4(color, 1.);
+    // vec4 frame = texture2D(b0, gl_FragCoord.xy/synth_Resolution);
+    // gl_FragColor = frame*.9 + .1*vec4(color, 1);
 
   } else if (PASSINDEX == 1) {
 
