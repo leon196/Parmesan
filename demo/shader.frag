@@ -26,6 +26,7 @@ const int STAGE_KIF = 4;
 #define beat (time*140./60./2.)
 #define repeat(p,r) (mod(p,r)-r/2.)
 int getStage () {
+  return STAGE_CITY;
   #ifdef veda
   float t = mod(time, 100.);
   #else
@@ -77,11 +78,11 @@ float sinc( float x, float k ) {
     return sin(a)/a;
 }
 float sequence (float a, float b) {
-  #ifdef veda
-  float t = mod(time, 20.);
-  #else
+  // #ifdef veda
+  // float t = mod(time, 20.);
+  // #else
   float t = time;
-  #endif
+  // #endif
   return smoothstep(b+.1,b,t) * smoothstep(a,a+.1,t);
 }
 
@@ -127,18 +128,19 @@ float map (vec3 pos) {
 
   } else if (stage == STAGE_CITY) {
 
-    float cell = 4.;
+    float cell = 2.;
     vec3 p = pos;
     pos.z += time;
     float id = floor(pos.z/cell);
+    float sid = sin(id);
     float tunnel = length(pos.xy)-.5;//+.2*sin(id);
     // tunnel = min(tunnel, (length(pos.xy)-.4+.1*sin(id)));
     pos.z = repeat(pos.z, cell);
     float amplitude = 1.0;
     for (int index = 0; index < 7; ++index) {
-      pos = abs(pos)-.8*amplitude;
-      pos.zx *= rot(-.5*amplitude+id*2.5468/amplitude+s0);
-      scene = min(scene, abs(abs(max(pos.x, max(pos.y, pos.z)))-.4*amplitude)-.2*amplitude);
+      pos = abs(pos)-(.7+.2*sid)*amplitude;
+      pos.zx *= rot(-.5*amplitude+id);
+      scene = min(scene, abs(abs(max(pos.x, max(pos.y, pos.z)))-(.4+.2*sid)*amplitude)-.1*amplitude);
       amplitude /= 2.0;
     }
     scene = max(0.0, -scene);
@@ -151,7 +153,7 @@ float map (vec3 pos) {
     float ay = .4;
     float ax = -.4;
     float az = -.8;
-    float wave = 0.75+0.25*sin(length(pos)*2.-2.7);//-beat*PI*2.);
+    float wave = 0.75+0.25*sin(length(pos)*2.-2.7-beat*PI*2.);
     float blend = .1;
     float radius = .2;
     float thin = .05;
@@ -189,13 +191,13 @@ float map (vec3 pos) {
 }
 
 vec3 getNormal (vec3 pos) {
-  vec2 e = vec2(1.0,-1.0)*0.5773*0.0005;
+  vec2 e = vec2(1.0,-1.0)*0.5773*0.00005;
   return normalize( e.xyy*map( pos + e.xyy ) + e.yyx*map( pos + e.yyx ) + e.yxy*map( pos + e.yxy ) + e.xxx*map( pos + e.xxx ) );
 }
 
 vec4 raymarch (vec3 eye, vec3 ray) {
   vec4 result = vec4(eye, 0);
-  float dither = random(ray.xy);
+  float dither = random(ray.xy+fract(time));
   float total = dither * .2;
   for (float index = 50.0; index > 0.0; --index) {
     result.xyz = eye + ray * total;
@@ -233,16 +235,46 @@ vec3 dots (float levelOfDetails) {
   return clamp(frame.rgb * shape, 0., 1.);
 }
 
+float getShadow (vec3 pos, vec3 at, float k) {
+    vec3 dir = normalize(at-pos);
+    float maxt = 1.;
+    float f = 1.;
+    float t = .001;
+    for (int i = 0; i < 60; ++i) {
+        float dist = map(pos + dir * t);
+        if (dist < .001) return 0.;
+        f = min(f, k * dist / t);
+        t += dist;
+        if (t >= maxt) break;
+    }
+    return f;
+}
+
 vec3 shade (vec3 view, vec4 pos) {
   float ao = pos.a;
   vec3 color = vec3(0);
   vec3 normal = getNormal(pos.xyz);
   int stage = getStage();
+  float s0 = floor(beat);
+  float b0 = fract(beat);
   if (stage == STAGE_RING) {
 
     color = vec3(0.980, 0.729, 0.478);
     color += vec3(0.980, 0.533, 0.478) * clamp(dot(normal, normalize(vec3(1,1,-1)))*.5+.5, 0., 1.);
     color += vec3(0.980, 0.078, 0.149) * pow(clamp(dot(normal, normalize(vec3(-2,-2,-4))), 0., 1.), 4.);
+
+  } else if (stage == STAGE_CITY) {
+
+    vec3 light = normalize(vec3(0.,1.,0.));
+    // intensity = clamp(intensity, 0., 1.);
+    // intensity *= b0;
+    color += vec3(1) * abs(dot(normal, light));
+    color += vec3(1) * pow(clamp(dot(normal, normalize(vec3(-1,-.1,-2))), 0., 1.), 2.);
+    color += vec3(1) * pow(clamp(dot(normal, normalize(vec3(1,.1,-2))), 0., 1.), 2.);
+    // color = 1.-color;
+    // color = smoothstep(.9, 1., color);
+    // color.r += .01/(abs(cos(pos.y-beat)));
+    // color.gb += .01/(1.-max(.0,sin((pos.z-beat)*2.)));
 
   } else {
 
@@ -272,10 +304,10 @@ void main() {
     // vec3 color = anaglyph(eye, at, uv);
 
     // gl_FragColor = vec4(color, 1.);
-    // vec4 frame = texture2D(b0, gl_FragCoord.xy/synth_Resolution);
-    // float blend = .7 * (1.-mod(beat, 1.));
-    // gl_FragColor = frame*blend + (1.-blend)*vec4(color, 1);
-    gl_FragColor = vec4(color, 1);
+    vec4 frame = texture2D(b0, gl_FragCoord.xy/synth_Resolution);
+    float blend = .0;//.7 * (1.-mod(beat, 1.));
+    gl_FragColor = frame*blend + (1.-blend)*vec4(color, 1);
+    // gl_FragColor = vec4(color, 1);
 
   } else if (PASSINDEX == 1) {
 
