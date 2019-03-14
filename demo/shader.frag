@@ -23,16 +23,25 @@ const int STAGE_TUNNEL = 1;
 const int STAGE_CITY = 2;
 const int STAGE_RING = 3;
 const int STAGE_KIF = 4;
-#define beat (time*140./60./2.)
+const float TIME_TUNNEL = 34.;
+#define beat mod(time*140./60./2., 144.)
 #define repeat(p,r) (mod(p,r)-r/2.)
 int getStage () {
-  return STAGE_CITY;
+  return STAGE_INTRO;
   #ifdef veda
   float t = mod(time, 100.);
   #else
   float t = time;
   #endif
   return int(step(34., t)) + int(step(48., t)) + int(step(75., t)) + int(step(102., t));
+}
+
+float getDamping () {
+  int stage = getStage();
+  if (stage == STAGE_TUNNEL) {
+    return .5;
+  }
+  return .9;
 }
 
 mat2 rot (float a) { float c=cos(a), s=sin(a); return mat2(c,s,-s,c); }
@@ -87,9 +96,6 @@ float sequence (float a, float b) {
 }
 
 float map (vec3 pos) {
-  // float chilly = noise(pos * 2.);
-  // float salty = fbm(pos*20.);
-  // float spicy = chilly*.1 + salty*.01;
   float scene = 1.0;
   float s0 = floor(beat);
   float b0 = mod(beat, 3.0)/3.;
@@ -115,22 +121,23 @@ float map (vec3 pos) {
 
   } else if (stage == STAGE_TUNNEL) {
 
-    vec3 cell = vec3(.4,.5,.9);
-    // pos.z += time * .5;
+    pos.z += beat - TIME_TUNNEL;
+    vec3 cell = vec3(1.5,2.,1.);
     vec3 id = floor(pos/cell);
-    pos.xy *= rot(id.z);
+    pos.xy *= rot(id.z * pos.z * .01);
     pos.x = repeat(pos.x, cell.x);
     pos.y = repeat(pos.y, cell.y);
     pos.z = repeat(pos.z, cell.z);
+    pos.y = abs(abs(pos.y)-.04)-.02;
     scene = min(
       sdCylinderBox(pos.xz, vec2(.05,.005)),
-      sdCylinderBox(pos.yz, vec2(.01,.005)));
+      sdCylinderBox(pos.yz, vec2(.001,.005)));
 
   } else if (stage == STAGE_CITY) {
 
     float cell = 2.;
     vec3 p = pos;
-    pos.z += time;
+    // pos.z += time * .1;
     float id = floor(pos.z/cell);
     float sid = sin(id);
     float tunnel = length(pos.xy)-.5;//+.2*sin(id);
@@ -206,7 +213,7 @@ vec4 raymarch (vec3 eye, vec3 ray) {
       result.a = index/50.;
       break;
     }
-    dist *= 0.9 + 0.1 * dither;
+    dist *= getDamping() + .1*dither;
     total += dist;
   }
   return result;
@@ -221,43 +228,26 @@ vec3 anaglyph (vec3 eye, vec3 at, vec2 uv) {
   return vec3(resultLeft.a, vec2(resultRight.a));
 }
 
-vec3 dots (float levelOfDetails) {
-  vec2 uv = gl_FragCoord.xy/synth_Resolution;
-  vec2 lod = synth_Resolution.xy/levelOfDetails;
-  vec2 uvpixel = floor(uv * lod + .5) / lod;
-  vec4 frame = texture2D(b0, uvpixel);
-  vec2 cell = 1./lod;
-  uv = repeat(uv+cell/2., cell);
-  float angle = random(uvpixel) * PI * 2.;
-  uv += vec2(cos(angle),sin(angle)) * cell.y/6.;
-  uv.x *= synth_Resolution.x/synth_Resolution.y;
-  float shape = smoothstep(cell.y/200., 0., length(uv)-cell.y/3.);
-  return clamp(frame.rgb * shape, 0., 1.);
-}
-
-float getShadow (vec3 pos, vec3 at, float k) {
-    vec3 dir = normalize(at-pos);
-    float maxt = 1.;
-    float f = 1.;
-    float t = .001;
-    for (int i = 0; i < 60; ++i) {
-        float dist = map(pos + dir * t);
-        if (dist < .001) return 0.;
-        f = min(f, k * dist / t);
-        t += dist;
-        if (t >= maxt) break;
-    }
-    return f;
-}
-
 vec3 shade (vec3 view, vec4 pos) {
   float ao = pos.a;
-  vec3 color = vec3(0);
+  vec3 color = vec3(1.);
   vec3 normal = getNormal(pos.xyz);
   int stage = getStage();
   float s0 = floor(beat);
   float b0 = fract(beat);
-  if (stage == STAGE_RING) {
+
+  if (stage == STAGE_INTRO) {
+
+    color = vec3(.1);
+    color += vec3(0.976, 0.647, 0.482) * pow(clamp(dot(normal, normalize(vec3(.4,.4,-1.))), 0., 1.), 4.);
+    color += vec3(1, 0.917, 0.760) * pow(clamp(dot(normal, normalize(vec3(-2,-4,0))), 0., 1.), 3.);
+
+  } else if (stage == STAGE_TUNNEL) {
+
+      color = vec3(.1);
+      color += vec3(0.698, 0.960, 0.909) * clamp(dot(normal, normalize(vec3(1,2,-1))), 0., 1.);
+
+  }  else if (stage == STAGE_RING) {
 
     color = vec3(0.980, 0.729, 0.478);
     color += vec3(0.980, 0.533, 0.478) * clamp(dot(normal, normalize(vec3(1,1,-1)))*.5+.5, 0., 1.);
@@ -276,7 +266,7 @@ vec3 shade (vec3 view, vec4 pos) {
     // color.r += .01/(abs(cos(pos.y-beat)));
     // color.gb += .01/(1.-max(.0,sin((pos.z-beat)*2.)));
 
-  } else {
+  } else if (stage == STAGE_KIF) {
 
     color = vec3(.1);
     color += vec3(0.760, 0.925, 1) * clamp(dot(normal, normalize(vec3(1,2,-1))), 0., 1.);
@@ -292,11 +282,20 @@ void main() {
 
   if (PASSINDEX == 0) {
 
+    int stage = getStage();
     vec2 uv = (gl_FragCoord.xy-0.5*synth_Resolution)/synth_Resolution.y;
-    vec3 eye = vec3(-.01,-.01,-4.);
+    vec3 eye = vec3(-.01,.01,-4.);
+    vec3 at = vec3(0,0,1.);
+
+    if (stage == STAGE_TUNNEL) {
+
+    }
+    else if (stage == STAGE_CITY) {
+      eye = vec3(-.1,.1,-1.);
+      at = vec3(1,-1,.1);
+    }
     // float angle = floor(beat) * 2.5465 * PI;
     // eye.xy += vec2(cos(angle), sin(angle)) * .2;
-    vec3 at = vec3(0);
     // at.xy -= vec2(cos(angle), sin(angle)) * .1;
     vec3 view = look(eye, at, uv);
     vec4 result = raymarch(eye, view);
@@ -305,7 +304,8 @@ void main() {
 
     // gl_FragColor = vec4(color, 1.);
     vec4 frame = texture2D(b0, gl_FragCoord.xy/synth_Resolution);
-    float blend = .0;//.7 * (1.-mod(beat, 1.));
+    float blend = mix(.0, .9, step(abs(float(stage-STAGE_CITY)), 0.01));
+    //.7 * (1.-mod(beat, 1.));
     gl_FragColor = frame*blend + (1.-blend)*vec4(color, 1);
     // gl_FragColor = vec4(color, 1);
 
