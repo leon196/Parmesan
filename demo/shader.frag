@@ -24,21 +24,23 @@ const int STAGE_CITY = 2;
 const int STAGE_RING = 3;
 const int STAGE_KIF = 4;
 const float TIME_TUNNEL = 34.;
+const float TIME_CITY = 34.;
+const float TIME_KIF = 75.;
+const float TIME_RING = 102.;
 #define beat mod(time*140./60./2., 144.)
+// #define beat max(0., time*140./60./2.-1.)
 #define repeat(p,r) (mod(p,r)-r/2.)
 int getStage () {
-  return STAGE_INTRO;
-  #ifdef veda
-  float t = mod(time, 100.);
-  #else
-  float t = time;
-  #endif
-  return int(step(34., t)) + int(step(48., t)) + int(step(75., t)) + int(step(102., t));
+  return int(step(TIME_TUNNEL, beat)) + int(step(TIME_CITY, beat)) + int(step(TIME_KIF, beat)) + int(step(TIME_RING, beat));
 }
 
 float getDamping () {
   int stage = getStage();
   if (stage == STAGE_TUNNEL) {
+    return .5;
+  } else if (stage == STAGE_CITY) {
+    return .3;
+  } else if (stage == STAGE_RING) {
     return .5;
   }
   return .9;
@@ -90,7 +92,7 @@ float sequence (float a, float b) {
   // #ifdef veda
   // float t = mod(time, 20.);
   // #else
-  float t = time;
+  float t = beat;
   // #endif
   return smoothstep(b+.1,b,t) * smoothstep(a,a+.1,t);
 }
@@ -111,13 +113,18 @@ float map (vec3 pos) {
   if (stage == STAGE_INTRO) {
 
     float bounce = sinc(mod(beat * 2., 1.), 5.);
-    pos.y += bounce * .25 * sequence(0., 7.0);
-    pos.z += sinc(mod(beat, 1.), 10.) * sequence(7., 35.);
+    pos.y += bounce * .25 * sequence(0., 7.5);
+    float cell = 8.;
+    float idz = floor(pos.z/cell);
+    pos.z = mix(pos.z, repeat(pos.z, cell), sequence(15., 35.));
+    idz = mix(0., idz, sequence(15., 35.));
+    float t = time + idz * .2;
+    float r = .5+.5*sinc(mod(beat, 1.), 10.) * sequence(18., 35.);
     pos.xy += vec2(
-      clamp(mod(mix(time, -time, step(1., mod(time, 2.))), 1.), 0., 1.) * 2. - 1.,
-      -abs(sin(time*5.0))+.5) * sequence(17., 35.);
+      (clamp(mod(mix(t, -t, step(1., mod(t, 2.))), 1.), 0., 1.) * 2. - 1.)*2.5,
+      -abs(sin(time*5.0+idz * .5))*2.+2.-r) * sequence(7.5, 35.);
     // pos.y += mod(mix(time, -time, step(1., mod(time, 2.))), 1.);
-    scene = length(pos)-1.0;
+    scene = length(pos)-r;
 
   } else if (stage == STAGE_TUNNEL) {
 
@@ -316,6 +323,8 @@ void main() {
     gl_FragColor = texture2D(b0, uv);
 
   }
+
+  gl_FragColor *= clamp(beat-1., 0., 1.);
 
 }
 
